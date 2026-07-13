@@ -1,0 +1,26 @@
+# WindowSpotlight
+
+外部アプリのウィンドウを選択したディスプレイの中央へ配置し、周囲を黒背景で覆う Windows 用 WPF アプリです。
+
+## 使い方
+
+1. 一覧または「照準で選択」から対象ウィンドウを選びます。
+2. 配置図からディスプレイを選びます。
+3. 現在サイズ、10～100%（5%刻み）、またはピクセル指定からサイズを選びます。
+4. 必要なら標準タイトルバーを隠し、「スポットライト開始」を押します。
+
+対象またはその所有ダイアログが前面にある間だけ黒背景を表示します。別のアプリへ切り替えると背景を隠し、対象へ戻ると再表示します。「停止」または WindowSpotlight の終了時に、対象の位置・表示状態・スタイルを開始前へ戻します。
+
+## ビルド
+
+Visual Studio 2026 の Developer Command Prompt、または次の MSBuild を使用します。
+
+```text
+"C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe" WindowSpotlight.slnx -restore -property:Configuration=Release
+```
+
+## 制限
+
+- 対象アプリ独自の最小サイズ、カスタムタイトルバー、独自フルスクリーン制御が優先される場合があります。
+- 管理者として動作する対象を変更する場合は、WindowSpotlight も同じ権限で起動する必要があります。
+- 強制終了、プロセスの強制停止、OSクラッシュ時の復元は保証されません。
