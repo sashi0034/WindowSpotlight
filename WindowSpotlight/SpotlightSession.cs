@@ -6,28 +6,18 @@ internal sealed class SpotlightSession : IDisposable
 {
     private readonly WindowPlatform _platform;
     private readonly Dispatcher _dispatcher;
-    private readonly DispatcherTimer _geometryTimer;
     private BackdropWindow? _backdrop;
     private WinEventWatcher? _eventWatcher;
     private ExternalWindowInfo? _target;
     private DisplayMonitorInfo? _monitor;
     private SpotlightOptions? _options;
     private WindowSnapshot? _snapshot;
-    private PixelRect _desiredWindowRect;
-    private PixelSize _requestedVisibleSize;
-    private bool _initialGeometryPending;
-    private bool _isApplyingGeometry;
     private bool _disposed;
 
     public SpotlightSession(WindowPlatform platform, Dispatcher dispatcher)
     {
         _platform = platform;
         _dispatcher = dispatcher;
-        _geometryTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
-        {
-            Interval = TimeSpan.FromMilliseconds(180)
-        };
-        _geometryTimer.Tick += OnGeometryTimerTick;
     }
 
     public SpotlightSessionState State { get; private set; } = SpotlightSessionState.Idle;
@@ -93,10 +83,6 @@ internal sealed class SpotlightSession : IDisposable
                     SessionStatusKind.Success);
             }
 
-            _initialGeometryPending = true;
-            _geometryTimer.Stop();
-            _geometryTimer.Interval = TimeSpan.FromMilliseconds(300);
-            _geometryTimer.Start();
         }
         catch
         {
@@ -144,54 +130,16 @@ internal sealed class SpotlightSession : IDisposable
 
         _disposed = true;
         Stop();
-        _geometryTimer.Tick -= OnGeometryTimerTick;
         GC.SuppressFinalize(this);
     }
 
-    private void ApplyInitialGeometry()
+    public void Recenter()
     {
-        var target = _target!;
-        var monitor = _monitor!;
-        var options = _options!;
-        var snapshot = _snapshot!;
-        var insets = WindowFrameInsets.Between(snapshot.WindowRect, snapshot.VisibleRect);
-
-        _requestedVisibleSize = GeometryCalculator.CalculateVisibleSize(
-            options.SizeMode,
-            snapshot.VisibleRect.Size,
-            monitor.Bounds.Size,
-            options.FitPercentage,
-            options.ExactWidth,
-            options.ExactHeight);
-        var desiredVisibleRect = GeometryCalculator.Center(monitor.Bounds, _requestedVisibleSize);
-        _desiredWindowRect = GeometryCalculator.VisibleToWindowRect(desiredVisibleRect, insets);
-        ApplyExpectedGeometry();
-    }
-
-    private void ApplyExpectedGeometry()
-    {
-        if (_target is null || !_platform.IsWindow(_target.Handle) || _isApplyingGeometry)
+        if (!IsActive || _target is null || _monitor is null)
         {
             return;
         }
 
-        _isApplyingGeometry = true;
-        try
-        {
-            _platform.PositionWindow(_target.Handle, _desiredWindowRect);
-        }
-        finally
-        {
-            _isApplyingGeometry = false;
-        }
-    }
-
-    private void SettleGeometry()
-    {
-        if (_target is null || _monitor is null)
-        {
-            return;
-        }
         if (!_platform.IsWindow(_target.Handle))
         {
             EndBecauseTargetClosed();
@@ -202,20 +150,75 @@ internal sealed class SpotlightSession : IDisposable
         var actualVisible = _platform.GetVisibleFrameRect(_target.Handle);
         var insets = WindowFrameInsets.Between(actualWindow, actualVisible);
         var centeredVisible = GeometryCalculator.Center(_monitor.Bounds, actualVisible.Size);
-        _desiredWindowRect = GeometryCalculator.VisibleToWindowRect(centeredVisible, insets);
+        var centeredWindow = GeometryCalculator.VisibleToWindowRect(centeredVisible, insets);
+        _platform.PositionWindow(_target.Handle, centeredWindow);
 
-        var sizeRejected = _options?.SizeMode != SizeMode.Unchanged &&
-                           (Math.Abs(actualVisible.Width - _requestedVisibleSize.Width) > 2 ||
-                            Math.Abs(actualVisible.Height - _requestedVisibleSize.Height) > 2);
-        ApplyExpectedGeometry();
+        StatusChanged?.Invoke(this, new SessionStatusEventArgs(
+            State,
+            "対象ウィンドウをディスプレイ中央へ再配置しました。",
+            SessionStatusKind.Success));
+    }
 
-        if (sizeRejected)
+    public void UpdateSize(SpotlightOptions options)
+    {
+        if (!IsActive || _target is null || _monitor is null || _snapshot is null ||
+            options.SizeMode == SizeMode.Unchanged)
         {
-            StatusChanged?.Invoke(this, new SessionStatusEventArgs(
-                State,
-                $"対象アプリの制約により {actualVisible.Width} × {actualVisible.Height}px で表示しています。",
-                SessionStatusKind.Warning));
+            return;
         }
+
+        if (!_target.CanResize)
+        {
+            throw new InvalidOperationException("このウィンドウは標準のサイズ変更に対応していません。");
+        }
+
+        if (!_platform.IsWindow(_target.Handle))
+        {
+            EndBecauseTargetClosed();
+            return;
+        }
+
+        var actualWindow = _platform.GetWindowRect(_target.Handle);
+        var actualVisible = _platform.GetVisibleFrameRect(_target.Handle);
+        var insets = WindowFrameInsets.Between(actualWindow, actualVisible);
+        var requestedVisibleSize = GeometryCalculator.CalculateVisibleSize(
+            options.SizeMode,
+            _snapshot.VisibleRect.Size,
+            _monitor.Bounds.Size,
+            options.FitPercentage,
+            options.ExactWidth,
+            options.ExactHeight);
+        var resizedVisible = GeometryCalculator.Center(_monitor.Bounds, requestedVisibleSize);
+        var resizedWindow = GeometryCalculator.VisibleToWindowRect(resizedVisible, insets);
+
+        _options = options;
+        _platform.PositionWindow(_target.Handle, resizedWindow);
+        StatusChanged?.Invoke(this, new SessionStatusEventArgs(
+            State,
+            $"対象ウィンドウを {requestedVisibleSize.Width} × {requestedVisibleSize.Height}px に変更し、中央へ再配置しました。",
+            SessionStatusKind.Success));
+    }
+
+    private void ApplyInitialGeometry()
+    {
+        var target = _target!;
+        var monitor = _monitor!;
+        var options = _options!;
+        var snapshot = _snapshot!;
+        var currentWindow = _platform.GetWindowRect(target.Handle);
+        var currentVisible = _platform.GetVisibleFrameRect(target.Handle);
+        var insets = WindowFrameInsets.Between(currentWindow, currentVisible);
+
+        var requestedVisibleSize = GeometryCalculator.CalculateVisibleSize(
+            options.SizeMode,
+            snapshot.VisibleRect.Size,
+            monitor.Bounds.Size,
+            options.FitPercentage,
+            options.ExactWidth,
+            options.ExactHeight);
+        var desiredVisibleRect = GeometryCalculator.Center(monitor.Bounds, requestedVisibleSize);
+        var desiredWindowRect = GeometryCalculator.VisibleToWindowRect(desiredVisibleRect, insets);
+        _platform.PositionWindow(target.Handle, desiredWindowRect);
     }
 
     private void OnWinEventReceived(object? sender, WinEventArgs e)
@@ -243,13 +246,6 @@ internal sealed class SpotlightSession : IDisposable
             return;
         }
 
-        if (e.EventType == NativeMethods.EventObjectLocationChange && e.Window == _target.Handle &&
-            e.ObjectId == NativeMethods.ObjidWindow && !_isApplyingGeometry)
-        {
-            _geometryTimer.Stop();
-            _geometryTimer.Interval = TimeSpan.FromMilliseconds(180);
-            _geometryTimer.Start();
-        }
     }
 
     private void EvaluateForeground(nint foreground)
@@ -293,40 +289,8 @@ internal sealed class SpotlightSession : IDisposable
         _platform.SetTemporaryTopmost(_target.Handle, true);
     }
 
-    private void OnGeometryTimerTick(object? sender, EventArgs e)
-    {
-        _geometryTimer.Stop();
-        if (_initialGeometryPending)
-        {
-            _initialGeometryPending = false;
-            SettleGeometry();
-            return;
-        }
-
-        if (_target is null)
-        {
-            return;
-        }
-
-        if (!_platform.IsWindow(_target.Handle))
-        {
-            EndBecauseTargetClosed();
-            return;
-        }
-
-        var current = _platform.GetWindowRect(_target.Handle);
-        if (Math.Abs(current.Left - _desiredWindowRect.Left) > 1 ||
-            Math.Abs(current.Top - _desiredWindowRect.Top) > 1 ||
-            Math.Abs(current.Width - _desiredWindowRect.Width) > 1 ||
-            Math.Abs(current.Height - _desiredWindowRect.Height) > 1)
-        {
-            ApplyExpectedGeometry();
-        }
-    }
-
     private void CleanupHooksAndBackdrop()
     {
-        _geometryTimer.Stop();
         if (_eventWatcher is not null)
         {
             _eventWatcher.EventReceived -= OnWinEventReceived;
@@ -357,8 +321,6 @@ internal sealed class SpotlightSession : IDisposable
         _monitor = null;
         _options = null;
         _snapshot = null;
-        _initialGeometryPending = false;
-        _desiredWindowRect = default;
         State = SpotlightSessionState.Idle;
     }
 

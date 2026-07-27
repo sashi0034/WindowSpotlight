@@ -44,7 +44,7 @@
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel x:Name="ConfigurationPanel" Margin="28,0,28,22">
-                <Border Margin="0,0,0,14" Style="{StaticResource CardStyle}">
+                <Border x:Name="TargetSelectionCard" Margin="0,0,0,14" Style="{StaticResource CardStyle}">
                     <StackPanel>
                         <TextBlock Text="1  対象ウィンドウ" Style="{StaticResource SubtitleTextBlockStyle}" />
                         <TextBlock Margin="0,4,0,12"
@@ -101,7 +101,7 @@
                     </StackPanel>
                 </Border>
 
-                <Border Margin="0,0,0,14" Style="{StaticResource CardStyle}">
+                <Border x:Name="MonitorSelectionCard" Margin="0,0,0,14" Style="{StaticResource CardStyle}">
                     <StackPanel>
                         <TextBlock Text="2  ディスプレイ" Style="{StaticResource SubtitleTextBlockStyle}" />
                         <TextBlock Margin="0,4,0,10"
@@ -165,9 +165,17 @@
                                              Content="ピクセルで指定"
                                              GroupName="SizeMode"
                                              Checked="OnSizeModeChanged" />
-                                <TextBox x:Name="ExactWidthTextBox" Grid.Column="1" VerticalContentAlignment="Center" />
+                                <TextBox x:Name="ExactWidthTextBox"
+                                         Grid.Column="1"
+                                         VerticalContentAlignment="Center"
+                                         LostKeyboardFocus="OnExactSizeLostKeyboardFocus"
+                                         KeyDown="OnExactSizeKeyDown" />
                                 <TextBlock Grid.Column="2" Margin="8,0" VerticalAlignment="Center" Text="×" />
-                                <TextBox x:Name="ExactHeightTextBox" Grid.Column="3" VerticalContentAlignment="Center" />
+                                <TextBox x:Name="ExactHeightTextBox"
+                                         Grid.Column="3"
+                                         VerticalContentAlignment="Center"
+                                         LostKeyboardFocus="OnExactSizeLostKeyboardFocus"
+                                         KeyDown="OnExactSizeKeyDown" />
                                 <TextBlock Grid.Column="4" Margin="8,0,0,0" VerticalAlignment="Center" Text="px" />
                             </Grid>
                             <ui:ToggleSwitch x:Name="RemoveTitleBarToggle"
@@ -188,6 +196,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Border x:Name="StatusBadge"
                         Margin="0,0,16,0"
@@ -196,15 +205,22 @@
                         HorizontalAlignment="Left">
                     <TextBlock x:Name="StatusText" Text="対象ウィンドウを選択してください。" TextWrapping="Wrap" />
                 </Border>
-                <Button x:Name="StopButton"
+                <Button x:Name="RecenterButton"
                         Grid.Column="1"
+                        MinWidth="112"
+                        Margin="0,0,8,0"
+                        Click="OnRecenterClick"
+                        Content="中央に再配置"
+                        IsEnabled="False" />
+                <Button x:Name="StopButton"
+                        Grid.Column="2"
                         MinWidth="92"
                         Margin="0,0,8,0"
                         Click="OnStopClick"
                         Content="停止"
                         IsEnabled="False" />
                 <Button x:Name="StartButton"
-                        Grid.Column="2"
+                        Grid.Column="3"
                         MinWidth="130"
                         Click="OnStartClick"
                         Content="スポットライト開始"

@@ -237,6 +237,18 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnRecenterClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _session.Recenter();
+        }
+        catch (Exception exception)
+        {
+            ShowStatus($"再配置中にエラーが発生しました: {exception.Message}", SessionStatusKind.Error);
+        }
+    }
+
     private bool TryReadOptions(out SpotlightOptions? options, out string? error)
     {
         options = null;
@@ -298,9 +310,12 @@ public partial class MainWindow : Window
 
     private void SetSessionControls(bool active)
     {
-        ConfigurationPanel.IsEnabled = !active;
+        TargetSelectionCard.IsEnabled = !active;
+        MonitorSelectionCard.IsEnabled = !active;
         StartButton.IsEnabled = !active && WindowComboBox.SelectedItem is not null && _selectedMonitor is not null;
+        RecenterButton.IsEnabled = active;
         StopButton.IsEnabled = active;
+        UpdateConfigurationAvailability();
     }
 
     private void UpdateConfigurationAvailability()
@@ -314,7 +329,7 @@ public partial class MainWindow : Window
         var canResize = target?.CanResize == true;
         PercentageRadio.IsEnabled = canResize;
         ExactPixelsRadio.IsEnabled = canResize;
-        RemoveTitleBarToggle.IsEnabled = target?.HasCaption == true;
+        RemoveTitleBarToggle.IsEnabled = !_session.IsActive && target?.HasCaption == true;
         if (target is not null && !target.HasCaption)
         {
             RemoveTitleBarToggle.IsOn = false;
@@ -359,6 +374,7 @@ public partial class MainWindow : Window
         if (IsInitialized)
         {
             UpdateSizeInputAvailability();
+            ApplyActiveSizeOptions();
         }
     }
 
@@ -367,6 +383,50 @@ public partial class MainWindow : Window
         if (PercentageText is not null)
         {
             PercentageText.Text = $"{(int)e.NewValue}%";
+        }
+
+        ApplyActiveSizeOptions();
+    }
+
+    private void OnExactSizeLostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) =>
+        ApplyActiveSizeOptions();
+
+    private void OnExactSizeKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter)
+        {
+            return;
+        }
+
+        ApplyActiveSizeOptions();
+        Keyboard.ClearFocus();
+        e.Handled = true;
+    }
+
+    private void ApplyActiveSizeOptions()
+    {
+        if (!_isInitialized || !_session.IsActive)
+        {
+            return;
+        }
+
+        if (!TryReadOptions(out var options, out var validationMessage))
+        {
+            ShowStatus(validationMessage!, SessionStatusKind.Warning);
+            return;
+        }
+
+        try
+        {
+            _session.UpdateSize(options!);
+            _settings.SizeMode = options!.SizeMode;
+            _settings.FitPercentage = options.FitPercentage;
+            _settings.ExactWidth = options.ExactWidth;
+            _settings.ExactHeight = options.ExactHeight;
+        }
+        catch (Exception exception)
+        {
+            ShowStatus($"サイズ変更中にエラーが発生しました: {exception.Message}", SessionStatusKind.Error);
         }
     }
 

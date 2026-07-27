@@ -34,6 +34,26 @@ public sealed class GeometryCalculatorTests
     }
 
     [TestMethod]
+    public void FitPercentage_PreservesOriginalWindowAspectRatio()
+    {
+        var original = new PixelSize(1234, 777);
+
+        var result = GeometryCalculator.CalculateVisibleSize(
+            SizeMode.FitPercentage,
+            original,
+            new PixelSize(2560, 1440),
+            80,
+            0,
+            0);
+
+        var originalRatio = original.Width / (double)original.Height;
+        var resultRatio = result.Width / (double)result.Height;
+        Assert.AreEqual(originalRatio, resultRatio, 0.002);
+        Assert.IsTrue(result.Width <= 2048);
+        Assert.IsTrue(result.Height <= 1152);
+    }
+
+    [TestMethod]
     public void ExactPixels_ClampsToMonitor()
     {
         var result = GeometryCalculator.CalculateVisibleSize(

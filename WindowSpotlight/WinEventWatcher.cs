@@ -13,8 +13,6 @@ internal sealed class WinEventWatcher : IDisposable
             NativeMethods.WineventOutOfContext);
         AddHook(NativeMethods.EventObjectDestroy, NativeMethods.EventObjectDestroy, targetProcessId,
             NativeMethods.WineventOutOfContext);
-        AddHook(NativeMethods.EventObjectLocationChange, NativeMethods.EventObjectLocationChange, targetProcessId,
-            NativeMethods.WineventOutOfContext);
     }
 
     public event EventHandler<WinEventArgs>? EventReceived;
